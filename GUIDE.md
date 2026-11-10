@@ -114,6 +114,17 @@ Also open http://localhost:8000/docs (auto Swagger UI).
 
 ## Step 9. CLEAN UP (do this when finished)
 Also: **re-enable Entra Security defaults** (see the security note under Step 2).
+
+### Purge soft-deleted OpenAI accounts (needed before re-creating one)
+Deleting a resource group **soft-deletes** Azure OpenAI accounts. They stay recoverable for a while and **still count against your quota** (trial: 1 OpenAI account per region). Their names also stay reserved, so re-creating the same name fails.
+```bash
+az cognitiveservices account list-deleted -o table                  # shows soft-deleted accounts
+az cognitiveservices account purge -n <account-name> -g <old-rg-name> -l <region>   # permanent
+az cognitiveservices usage list -l eastus2 \
+  --query "[?name.value=='OpenAI.S0.AccountCount'].{limit:limit,used:currentValue}" -o table   # used should be 0
+```
+Do this right after deleting the group if you plan to re-create (for example `terraform apply` again). Purge is permanent, so only purge accounts you really don't need.
+Terraform hint: provider setting `features { cognitive_account { purge_soft_delete_on_destroy = true } }` purges automatically on `terraform destroy`.
 ```bash
 az group delete -n $RG --yes --no-wait     # deletes everything, stops all billing
 ```
@@ -126,6 +137,9 @@ Check spend anytime: portal.azure.com -> Cost Management.
 | `DeploymentNotFound` | deployment name != `.env`/defaults (`gpt-4o-mini`, `text-embedding-3-small`) |
 | Always "I don't know" | lower `MIN_RERANK_SCORE` (env) e.g. `0.5`; check ingest uploaded chunks |
 | Semantic ranker error on free tier | free tier supports it (1000 q/mo); ensure `semantic_configuration_name="default"` matches index |
+| `InsufficientQuota` creating an OpenAI account (Terraform or `az`), though you have no OpenAI account | a **soft-deleted** OpenAI account from an earlier delete still counts against the per-region limit (`OpenAI.S0.AccountCount` is 1 on the trial). Purge it, see "Purge soft-deleted OpenAI accounts" below |
+| `ServiceModelDeprecating` | model version can't be newly deployed; check lifecycle with `az cognitiveservices account list-models` |
+| `InsufficientQuota` on a model deployment | quota for that model is 0 on your subscription/region; pick another model (`az cognitiveservices usage list -l <region>`) |
 
 ## Optional: deploy and test on AKS (~$2/day for the node; delete the RG after)
 Resources and why: see `basic.md` (AKS section). Terraform for the whole stack: `infra/`.
