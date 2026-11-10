@@ -18,6 +18,12 @@ az account show -o table        # note State=Enabled, subscription name
 ```
 Free-trial note: Azure OpenAI may be blocked on trial subs ("quota"/"access" errors in Step 4). Fix: portal -> Subscriptions -> **Upgrade** to pay-as-you-go. Your remaining $200 credit still applies; you only pay beyond it.
 
+### Security note: Entra "Security defaults" were disabled for this demo
+`az login` failed with `AADSTS530035` ("blocked by security defaults") because the personal account couldn't register MFA. To get past it we set **Microsoft Entra ID -> Properties -> Manage security defaults -> Disabled**.
+- That turns off the tenant-wide MFA requirement, which is acceptable only for a throwaway lab tenant.
+- **Re-enable it after the demo:** portal -> Microsoft Entra ID -> Properties -> Manage security defaults -> **Enabled** -> Save. (Or replace it with Conditional Access policies requiring MFA.)
+- In a real environment never leave it off: use MFA / Conditional Access, plus least-privilege RBAC.
+
 ## Step 3. Set variables + create resource group
 ```bash
 export RG=azure-ai-lab-rg
@@ -105,6 +111,7 @@ curl -s localhost:8000/ask -H 'content-type: application/json' \
 Also open http://localhost:8000/docs (auto Swagger UI).
 
 ## Step 9. CLEAN UP (do this when finished)
+Also: **re-enable Entra Security defaults** (see the security note under Step 2).
 ```bash
 az group delete -n $RG --yes --no-wait     # deletes everything, stops all billing
 ```
