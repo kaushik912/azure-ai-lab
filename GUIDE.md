@@ -145,20 +145,44 @@ Check spend anytime: portal.azure.com -> Cost Management.
 Resources and why: see `basic.md` (AKS section). Terraform for the whole stack: `infra/`.
 Free-trial gotchas: `az acr build` is blocked (build with local Docker instead); allowed VM sizes are limited per region (we used `Standard_D2as_v6`).
 
-### A. Build and push the image (needs Docker running; stop it afterwards)
+### 0. Set your names (names differ per run: the suffix is random)
+Run once per shell. Pick the path you used:
 ```bash
-export AZURE_CONFIG_DIR=$HOME/.azure-wsl SUF=18430
-az acr login -n acrazureai$SUF
-docker build -t acrazureai$SUF.azurecr.io/azure-ai-lab:v1 .
-docker push acrazureai$SUF.azurecr.io/azure-ai-lab:v1
+export AZURE_CONFIG_DIR=$HOME/.azure-wsl
+
+# Path 1: Terraform created everything (suffix + RG come from outputs)
+cd ~/github_projs/azure-ai-lab/infra
+export SUF=$(terraform output -raw suffix)
+export RG=$(terraform output -raw resource_group)
+cd ..
+
+# Path 2: manual CLI steps (Steps 3-6 above); use the $SUF you noted
+# export SUF=18430
+# export RG=azure-ai-lab-rg
+
+export AKS=aks$SUF ACR=acrazureai$SUF AOAI=aoai$SUF SRCH=srch$SUF
+echo "$RG  $AKS  $ACR  $AOAI  $SRCH"
+```
+Naming is the same in both paths (`aks<sfx>`, `acrazureai<sfx>`, ...); only the resource group differs.
+**Terraform path: skip section B** (it already created the registry, cluster, identity, roles, and federated credential).
+`k8s/deployment.yaml` has hardcoded values (identity client ID, endpoints, image). After a new run, update them:
+```bash
+terraform -chdir=infra output        # app_identity_client_id, aoai_endpoint, search_endpoint, acr_login_server
 ```
 
-### B. Cluster + identity (one-time)
+### A. Build and push the image (needs Docker running; stop it afterwards)
 ```bash
-export RG=azure-ai-lab-rg LOC=eastus2 SUF=18430
-az acr create -n acrazureai$SUF -g $RG -l $LOC --sku Basic
-az aks create -g $RG -n aks$SUF -l $LOC --tier free --node-count 1 --node-vm-size Standard_D2as_v6 \
-  --attach-acr acrazureai$SUF --enable-oidc-issuer --enable-workload-identity --generate-ssh-keys
+az acr login -n $ACR
+docker build -t $ACR.azurecr.io/azure-ai-lab:v1 .
+docker push $ACR.azurecr.io/azure-ai-lab:v1
+```
+
+### B. Cluster + identity (one-time; manual path only. Skip if Terraform created it)
+```bash
+export LOC=eastus2          # uses RG, SUF, ACR, AKS from section 0
+az acr create -n $ACR -g $RG -l $LOC --sku Basic
+az aks create -g $RG -n $AKS -l $LOC --tier free --node-count 1 --node-vm-size Standard_D2as_v6 \
+  --attach-acr $ACR --enable-oidc-issuer --enable-workload-identity --generate-ssh-keys
 
 # identity the pod acts as + permissions (client ID goes in k8s/deployment.yaml)
 az identity create -n id-ai-app$SUF -g $RG -l $LOC
@@ -180,7 +204,7 @@ az identity federated-credential create -n fc-ai-app -g $RG --identity-name id-a
 mkdir -p ~/.local/bin
 export AZURE_CONFIG_DIR=$HOME/.azure-wsl PATH=$HOME/.local/bin:$PATH
 az aks install-cli --install-location ~/.local/bin/kubectl --kubelogin-install-location ~/.local/bin/kubelogin
-az aks get-credentials -g azure-ai-lab-rg -n aks18430      # writes ~/.kube/config
+az aks get-credentials -g $RG -n $AKS      # writes ~/.kube/config (needs section 0 variables)
 ```
 `kubelogin` = Azure/Entra auth plugin for kubectl (AKS equivalent of `aws eks get-token`).
 
@@ -230,8 +254,12 @@ Or open http://localhost:8080/docs.
 
 ### H. Delete everything
 ```bash
-az group delete -n azure-ai-lab-rg --yes --no-wait
+# Manual path
+az group delete -n $RG --yes --no-wait
+# Terraform path (removes what Terraform created; state tracks it)
+terraform -chdir=infra destroy
 ```
+Then purge the soft-deleted OpenAI account if you plan to re-create (see "Purge soft-deleted OpenAI accounts").
 
 ---
 
