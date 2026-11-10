@@ -51,7 +51,7 @@ flowchart TD
     P1 -.-> P3
     P1 -.-> P4
 
-    V3 --> CLEAN["terraform destroy / az group delete<br/>then purge soft-deleted OpenAI account"]
+    V3 --> CLEAN["terraform destroy (auto-purges OpenAI)<br/>or az group delete + manual purge"]
 
     classDef later stroke-dasharray: 5 5,fill:#f5f5f5,color:#333
     class P1,P2,P3,P4 later
@@ -102,4 +102,4 @@ flowchart LR
 | Image | `Dockerfile` -> `docker build` / `push` |
 | Deploy | `k8s/deployment.yaml` (template) + `scripts/render-k8s.sh` |
 | Test | `pytest`, then `kubectl port-forward` + `curl` |
-| Teardown | `terraform destroy`, purge soft-deleted OpenAI |
+| Teardown | `terraform destroy` (auto-purges OpenAI). After `az group delete`, purge by hand |

@@ -115,7 +115,8 @@ Also open http://localhost:8000/docs (auto Swagger UI).
 ## Step 9. CLEAN UP (do this when finished)
 Also: **re-enable Entra Security defaults** (see the security note under Step 2).
 
-### Purge soft-deleted OpenAI accounts (needed before re-creating one)
+### Purge soft-deleted OpenAI accounts (needed after `az group delete`, before re-creating one)
+**Which delete path?** `az group delete` (manual path) leaves the OpenAI account soft-deleted, so you must purge it. `terraform destroy` purges it for you (the azurerm provider's `purge_soft_delete_on_destroy` defaults to `true`; we verified: after a destroy, `list-deleted` was empty and quota was back to 0 used).
 Deleting a resource group **soft-deletes** Azure OpenAI accounts. They stay recoverable for a while and **still count against your quota** (trial: 1 OpenAI account per region). Their names also stay reserved, so re-creating the same name fails.
 ```bash
 az cognitiveservices account list-deleted -o table                  # shows soft-deleted accounts
@@ -124,7 +125,7 @@ az cognitiveservices usage list -l eastus2 \
   --query "[?name.value=='OpenAI.S0.AccountCount'].{limit:limit,used:currentValue}" -o table   # used should be 0
 ```
 Do this right after deleting the group if you plan to re-create (for example `terraform apply` again). Purge is permanent, so only purge accounts you really don't need.
-Terraform hint: provider setting `features { cognitive_account { purge_soft_delete_on_destroy = true } }` purges automatically on `terraform destroy`.
+Terraform note: no extra setting needed. `terraform destroy` purges automatically (default `true`). Only if you set `purge_soft_delete_on_destroy = false` in the provider `features { cognitive_account { ... } }` block would you need to purge by hand. If a stack was deleted with `az group delete` instead of Terraform, purge by hand as above.
 ```bash
 az group delete -n $RG --yes --no-wait     # deletes everything, stops all billing
 ```
@@ -259,7 +260,7 @@ az group delete -n $RG --yes --no-wait
 # Terraform path (removes what Terraform created; state tracks it)
 terraform -chdir=infra destroy
 ```
-Then purge the soft-deleted OpenAI account if you plan to re-create (see "Purge soft-deleted OpenAI accounts").
+After the **manual** path, purge the soft-deleted OpenAI account if you plan to re-create (see "Purge soft-deleted OpenAI accounts"). After `terraform destroy` no purge is needed.
 
 ---
 
