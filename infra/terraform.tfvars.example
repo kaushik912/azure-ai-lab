@@ -1,1 +1,4 @@
-suffix = "tf1"   # unique, lowercase letters/digits, short
+# Optional. By default a random 5-char suffix is generated (random_string).
+# Uncomment to pin one (lowercase letters/digits only; use a NEW value after a delete,
+# since deleted OpenAI accounts are soft-deleted).
+# suffix = "tf1"

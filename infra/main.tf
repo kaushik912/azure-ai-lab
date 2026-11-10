@@ -1,5 +1,15 @@
+# Random suffix keeps globally-unique names (OpenAI, Search, ACR) from colliding.
+# Stored in state, so it stays stable across applies; `terraform destroy` + `apply`
+# gets a fresh one (avoids soft-deleted OpenAI name conflicts).
+resource "random_string" "suffix" {
+  length  = 5
+  upper   = false
+  special = false
+}
+
 locals {
-  rg_name = "azure-ai-lab-${var.suffix}-rg"
+  suffix  = coalesce(var.suffix, random_string.suffix.result) # var.suffix overrides
+  rg_name = "azure-ai-lab-${local.suffix}-rg"
 }
 
 resource "azurerm_resource_group" "rg" {
@@ -9,12 +19,12 @@ resource "azurerm_resource_group" "rg" {
 
 # ---------- Azure OpenAI ----------
 resource "azurerm_cognitive_account" "aoai" {
-  name                  = "aoai${var.suffix}"
+  name                  = "aoai${local.suffix}"
   resource_group_name   = azurerm_resource_group.rg.name
   location              = var.location
   kind                  = "OpenAI"
   sku_name              = "S0"
-  custom_subdomain_name = "aoai${var.suffix}" # required for Entra (keyless) auth
+  custom_subdomain_name = "aoai${local.suffix}" # required for Entra (keyless) auth
 }
 
 resource "azurerm_cognitive_deployment" "chat" {
@@ -48,7 +58,7 @@ resource "azurerm_cognitive_deployment" "embedding" {
 
 # ---------- AI Search (free tier) ----------
 resource "azurerm_search_service" "search" {
-  name                         = "srch${var.suffix}"
+  name                         = "srch${local.suffix}"
   resource_group_name          = azurerm_resource_group.rg.name
   location                     = var.search_location
   sku                          = "free"
@@ -58,17 +68,17 @@ resource "azurerm_search_service" "search" {
 
 # ---------- Container Registry + AKS ----------
 resource "azurerm_container_registry" "acr" {
-  name                = "acrazureai${var.suffix}"
+  name                = "acrazureai${local.suffix}"
   resource_group_name = azurerm_resource_group.rg.name
   location            = var.location
   sku                 = "Basic"
 }
 
 resource "azurerm_kubernetes_cluster" "aks" {
-  name                      = "aks${var.suffix}"
+  name                      = "aks${local.suffix}"
   resource_group_name       = azurerm_resource_group.rg.name
   location                  = var.location
-  dns_prefix                = "aks${var.suffix}"
+  dns_prefix                = "aks${local.suffix}"
   sku_tier                  = "Free"
   oidc_issuer_enabled       = true # token issuer for pods
   workload_identity_enabled = true # pod -> managed identity, no secrets
@@ -94,7 +104,7 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
 
 # ---------- App identity (Workload Identity) ----------
 resource "azurerm_user_assigned_identity" "app" {
-  name                = "id-ai-app${var.suffix}"
+  name                = "id-ai-app${local.suffix}"
   resource_group_name = azurerm_resource_group.rg.name
   location            = var.location
 }

@@ -1,6 +1,7 @@
 variable "suffix" {
-  description = "Short unique suffix for globally-unique names (OpenAI, Search, ACR)."
+  description = "Optional override. Leave null to use a generated random suffix (lowercase letters/digits)."
   type        = string
+  default     = null
 }
 
 variable "location" {

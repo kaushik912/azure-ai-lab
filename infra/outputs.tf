@@ -1,3 +1,4 @@
+output "suffix" { value = local.suffix }
 output "resource_group" { value = azurerm_resource_group.rg.name }
 output "aoai_endpoint" { value = azurerm_cognitive_account.aoai.endpoint }
 output "search_endpoint" { value = "https://${azurerm_search_service.search.name}.search.windows.net" }
