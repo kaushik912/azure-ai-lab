@@ -122,7 +122,7 @@ Azure rents us the pieces (AI model, search, a place to run the app). We pay per
 - `az aks install-cli`: installs `kubectl` (Kubernetes CLI) and `kubelogin` (Entra login plugin).
 - `az aks get-credentials -g <rg> -n <aks>`: writes cluster connection info into a kubeconfig file.
 - `kubectl get nodes`: is the node Ready?
-- `kubectl apply -f k8s/deployment.yaml`: creates the ServiceAccount, Deployment, Service from the manifest.
+- `scripts/render-k8s.sh | kubectl apply -f -`: fills `k8s/deployment.yaml` (a template) with values from `terraform output` using `envsubst`, then creates the ServiceAccount, Deployment, Service.
 - `kubectl get pods` / `kubectl logs deploy/ai-app` / `kubectl describe pod`: status, app logs, why a pod fails (image pull errors, probe failures).
 - `kubectl port-forward svc/ai-app 8080:80`: tunnel localhost:8080 to the private Service, to test without exposing it publicly.
 - `kubectl rollout restart deploy/ai-app`: restart pods (e.g. after a new image or role change).

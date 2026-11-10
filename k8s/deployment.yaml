@@ -1,3 +1,7 @@
+# TEMPLATE: do not `kubectl apply` this file directly. Render it first:
+#   scripts/render-k8s.sh | kubectl apply -f -
+# Placeholders (${...}) are filled from `terraform output` by scripts/render-k8s.sh.
+#
 # Workload Identity: ServiceAccount annotated with a user-assigned managed identity client ID.
 # That identity has: "Cognitive Services OpenAI User" on AOAI, "Search Index Data Reader" on AI Search.
 # No API keys anywhere. Service is ClusterIP (private): test via `kubectl port-forward`.
@@ -6,7 +10,7 @@ kind: ServiceAccount
 metadata:
   name: ai-app
   annotations:
-    azure.workload.identity/client-id: "47a2c505-dda0-44f3-ad3e-4914d003fa2c"
+    azure.workload.identity/client-id: "${CLIENT_ID}"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -25,13 +29,13 @@ spec:
       serviceAccountName: ai-app
       containers:
         - name: api
-          image: acrazureai18430.azurecr.io/azure-ai-lab:v1
+          image: ${ACR_LOGIN_SERVER}/azure-ai-lab:${IMAGE_TAG}
           ports: [{ containerPort: 8000 }]
           env:
-            - { name: AZURE_OPENAI_ENDPOINT, value: "https://aoai18430.openai.azure.com" }
+            - { name: AZURE_OPENAI_ENDPOINT, value: "${AOAI_ENDPOINT}" }
             - { name: AZURE_OPENAI_CHAT_DEPLOYMENT, value: "chat" }
             - { name: AZURE_OPENAI_EMBEDDING_DEPLOYMENT, value: "text-embedding-3-small" }
-            - { name: AZURE_SEARCH_ENDPOINT, value: "https://srch18430.search.windows.net" }
+            - { name: AZURE_SEARCH_ENDPOINT, value: "${SEARCH_ENDPOINT}" }
             - { name: AZURE_SEARCH_INDEX, value: "docs" }
           readinessProbe:
             httpGet: { path: /healthz, port: 8000 }

@@ -165,10 +165,7 @@ echo "$RG  $AKS  $ACR  $AOAI  $SRCH"
 ```
 Naming is the same in both paths (`aks<sfx>`, `acrazureai<sfx>`, ...); only the resource group differs.
 **Terraform path: skip section B** (it already created the registry, cluster, identity, roles, and federated credential).
-`k8s/deployment.yaml` has hardcoded values (identity client ID, endpoints, image). After a new run, update them:
-```bash
-terraform -chdir=infra output        # app_identity_client_id, aoai_endpoint, search_endpoint, acr_login_server
-```
+`k8s/deployment.yaml` is a **template** (`${CLIENT_ID}`, `${AOAI_ENDPOINT}`, `${SEARCH_ENDPOINT}`, `${ACR_LOGIN_SERVER}`, `${IMAGE_TAG}`). `scripts/render-k8s.sh` fills it from `terraform output`, so there's nothing to edit by hand after a new run. (Manual path without Terraform: export those variables yourself, then run the script's `envsubst` line.)
 
 ### A. Build and push the image (needs Docker running; stop it afterwards)
 ```bash
@@ -184,7 +181,7 @@ az acr create -n $ACR -g $RG -l $LOC --sku Basic
 az aks create -g $RG -n $AKS -l $LOC --tier free --node-count 1 --node-vm-size Standard_D2as_v6 \
   --attach-acr $ACR --enable-oidc-issuer --enable-workload-identity --generate-ssh-keys
 
-# identity the pod acts as + permissions (client ID goes in k8s/deployment.yaml)
+# identity the pod acts as + permissions (its client ID is injected into the manifest by scripts/render-k8s.sh)
 az identity create -n id-ai-app$SUF -g $RG -l $LOC
 PID=$(az identity show -n id-ai-app$SUF -g $RG --query principalId -o tsv)
 SUB=$(az account show --query id -o tsv); BASE=/subscriptions/$SUB/resourceGroups/$RG/providers
@@ -210,8 +207,10 @@ az aks get-credentials -g $RG -n $AKS      # writes ~/.kube/config (needs sectio
 
 ### D. Deploy
 ```bash
-kubectl apply -f k8s/deployment.yaml     # ServiceAccount + Deployment + Service (ClusterIP, private)
+scripts/render-k8s.sh | less                    # optional: look at the filled-in manifest first
+scripts/render-k8s.sh | kubectl apply -f -      # ServiceAccount + Deployment + Service (ClusterIP, private)
 kubectl rollout status deploy/ai-app
+# different image tag: IMAGE_TAG=v2 scripts/render-k8s.sh | kubectl apply -f -
 ```
 
 ### E. Test
