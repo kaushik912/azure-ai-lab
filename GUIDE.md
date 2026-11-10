@@ -118,5 +118,94 @@ Check spend anytime: portal.azure.com -> Cost Management.
 | Always "I don't know" | lower `MIN_RERANK_SCORE` (env) e.g. `0.5`; check ingest uploaded chunks |
 | Semantic ranker error on free tier | free tier supports it (1000 q/mo); ensure `semantic_configuration_name="default"` matches index |
 
-## Later (optional, costs more): AKS / Container Apps
-Needs Docker (build image) and ~$70+/mo for AKS nodes. Only do for a 1-2 hour demo then delete the RG. See `k8s/deployment.yaml`.
+## Optional: deploy and test on AKS (~$2/day for the node; delete the RG after)
+Resources and why: see `basic.md` (AKS section). Terraform for the whole stack: `infra/`.
+Free-trial gotchas: `az acr build` is blocked (build with local Docker instead); allowed VM sizes are limited per region (we used `Standard_D2as_v6`).
+
+### A. Build and push the image (needs Docker running; stop it afterwards)
+```bash
+export AZURE_CONFIG_DIR=$HOME/.azure-wsl SUF=18430
+az acr login -n acrazureai$SUF
+docker build -t acrazureai$SUF.azurecr.io/azure-ai-lab:v1 .
+docker push acrazureai$SUF.azurecr.io/azure-ai-lab:v1
+```
+
+### B. Cluster + identity (one-time)
+```bash
+export RG=azure-ai-lab-rg LOC=eastus2 SUF=18430
+az acr create -n acrazureai$SUF -g $RG -l $LOC --sku Basic
+az aks create -g $RG -n aks$SUF -l $LOC --tier free --node-count 1 --node-vm-size Standard_D2as_v6 \
+  --attach-acr acrazureai$SUF --enable-oidc-issuer --enable-workload-identity --generate-ssh-keys
+
+# identity the pod acts as + permissions (client ID goes in k8s/deployment.yaml)
+az identity create -n id-ai-app$SUF -g $RG -l $LOC
+PID=$(az identity show -n id-ai-app$SUF -g $RG --query principalId -o tsv)
+SUB=$(az account show --query id -o tsv); BASE=/subscriptions/$SUB/resourceGroups/$RG/providers
+az role assignment create --assignee-object-id $PID --assignee-principal-type ServicePrincipal \
+  --role "Cognitive Services OpenAI User" --scope $BASE/Microsoft.CognitiveServices/accounts/aoai$SUF
+az role assignment create --assignee-object-id $PID --assignee-principal-type ServicePrincipal \
+  --role "Search Index Data Reader" --scope $BASE/Microsoft.Search/searchServices/srch$SUF
+
+# trust link: this cluster's ServiceAccount default/ai-app may act as the identity
+ISS=$(az aks show -g $RG -n aks$SUF --query oidcIssuerProfile.issuerUrl -o tsv)
+az identity federated-credential create -n fc-ai-app -g $RG --identity-name id-ai-app$SUF \
+  --issuer "$ISS" --subject system:serviceaccount:default:ai-app --audiences api://AzureADTokenExchange
+```
+
+### C. kubectl setup (WSL: /usr/local/bin may be read-only, so install to ~/.local/bin)
+```bash
+mkdir -p ~/.local/bin
+export AZURE_CONFIG_DIR=$HOME/.azure-wsl PATH=$HOME/.local/bin:$PATH
+az aks install-cli --install-location ~/.local/bin/kubectl --kubelogin-install-location ~/.local/bin/kubelogin
+az aks get-credentials -g azure-ai-lab-rg -n aks18430      # writes ~/.kube/config
+```
+`kubelogin` = Azure/Entra auth plugin for kubectl (AKS equivalent of `aws eks get-token`).
+
+### D. Deploy
+```bash
+kubectl apply -f k8s/deployment.yaml     # ServiceAccount + Deployment + Service (ClusterIP, private)
+kubectl rollout status deploy/ai-app
+```
+
+### E. Test
+```bash
+kubectl get nodes                        # Ready
+kubectl get pods                         # ai-app-... 1/1 Running
+kubectl logs deploy/ai-app --tail=20     # /healthz 200 lines
+kubectl port-forward svc/ai-app 8080:80  # tunnel; leave running (Service is not public)
+```
+Second terminal:
+```bash
+curl -s localhost:8080/healthz
+curl -s localhost:8080/ask -H 'content-type: application/json' \
+  -d '{"question":"How many PTO days roll over?"}' | python3 -m json.tool
+curl -s localhost:8080/ask -H 'content-type: application/json' \
+  -d '{"question":"What is the capital of France?"}'      # declines, no LLM call
+curl -N localhost:8080/ask/stream -H 'content-type: application/json' \
+  -d '{"question":"What is the on-call stipend?"}'        # streams tokens
+```
+Or open http://localhost:8080/docs.
+
+### F. Things to try / know for interviews
+| Try | Shows |
+| --- | --- |
+| `kubectl exec deploy/ai-app -- env \| grep AZURE_` | Workload Identity webhook injects `AZURE_CLIENT_ID`, `AZURE_FEDERATED_TOKEN_FILE`; no API key anywhere |
+| `kubectl delete pod -l app=ai-app` then `kubectl get pods -w` | self-healing |
+| `kubectl scale deploy/ai-app --replicas=2` | scaling |
+| `kubectl describe pod -l app=ai-app` | events: image pull / probe failures |
+| `kubectl rollout restart deploy/ai-app` | restart after new image or role change |
+
+### G. Troubleshooting AKS
+| Symptom | Cause / fix |
+| --- | --- |
+| `ImagePullBackOff` | image not pushed, wrong tag, or ACR not attached (`az aks update --attach-acr`) |
+| App 401/403 in logs | role not propagated (wait ~2 min) or federated credential subject != `system:serviceaccount:default:ai-app` |
+| Pod `CrashLoopBackOff` | `kubectl logs deploy/ai-app --previous`; usually missing env var |
+| `VM size ... not allowed` | pick another size from the error's list |
+| `TasksOperationsNotAllowed` | free trial blocks ACR Tasks; use local `docker build` + `push` |
+| `Read-only file system` for kubectl install | use `--install-location ~/.local/bin/kubectl` |
+
+### H. Delete everything
+```bash
+az group delete -n azure-ai-lab-rg --yes --no-wait
+```
