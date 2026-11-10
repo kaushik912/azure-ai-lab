@@ -17,8 +17,8 @@ curl -N -X POST localhost:8000/ask/stream -H 'content-type: application/json' -d
 
 ## Roadmap (maps to 30-day plan)
 - [x] P1/P2: FastAPI + AOAI + hybrid search + LangGraph router
-- [ ] Ingestion script: chunk (500 tok / 50 overlap) -> index w/ integrated vectorizer
+- [x] Ingestion script: chunk -> embed -> index (`scripts/ingest.py`)
 - [ ] Retry loop in graph on low rerank score
-- [ ] P3: ACR push + AKS deploy (`k8s/deployment.yaml`)
+- [x] P3: ACR push + AKS deploy with Workload Identity (`k8s/deployment.yaml`), tested via port-forward
 - [ ] P4: GitHub Actions CI/CD, App Insights token-usage spans, eval set
 - [ ] Terraform/Bicep for RG, AOAI, Search, AKS, ACR
