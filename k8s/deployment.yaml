@@ -1,0 +1,47 @@
+# Workload Identity: SA annotated with a user-assigned managed identity client ID.
+# Grant that identity: "Cognitive Services OpenAI User" on AOAI,
+# "Search Index Data Reader" on AI Search. No API keys anywhere.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ai-app
+  annotations:
+    azure.workload.identity/client-id: "<MANAGED_IDENTITY_CLIENT_ID>"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: ai-app }
+  template:
+    metadata:
+      labels:
+        app: ai-app
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: ai-app
+      containers:
+        - name: api
+          image: <ACR_NAME>.azurecr.io/azure-ai-lab:latest
+          ports: [{ containerPort: 8000 }]
+          env:
+            - { name: AZURE_OPENAI_ENDPOINT, value: "https://<aoai>.openai.azure.com" }
+            - { name: AZURE_SEARCH_ENDPOINT, value: "https://<search>.search.windows.net" }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-app
+spec:
+  selector: { app: ai-app }
+  ports: [{ port: 80, targetPort: 8000 }]
