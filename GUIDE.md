@@ -138,6 +138,7 @@ Check spend anytime: portal.azure.com -> Cost Management.
 | Always "I don't know" | lower `MIN_RERANK_SCORE` (env) e.g. `0.5`; check ingest uploaded chunks |
 | Semantic ranker error on free tier | free tier supports it (1000 q/mo); ensure `semantic_configuration_name="default"` matches index |
 | `InsufficientQuota` creating an OpenAI account (Terraform or `az`), though you have no OpenAI account | a **soft-deleted** OpenAI account from an earlier delete still counts against the per-region limit (`OpenAI.S0.AccountCount` is 1 on the trial). Purge it, see "Purge soft-deleted OpenAI accounts" below |
+| `SemanticQueriesNotAvailable` / "Semantic search is not enabled for this service" | the reranker is off on the Search service. Enable: `az search service update -n <srch> -g <rg> --semantic-search free`. (Terraform: the azurerm provider rejects `semantic_search_sku` on the free tier, so `infra/` does it with a `terraform_data` CLI step and `ignore_changes`.) |
 | `ServiceModelDeprecating` | model version can't be newly deployed; check lifecycle with `az cognitiveservices account list-models` |
 | `InsufficientQuota` on a model deployment | quota for that model is 0 on your subscription/region; pick another model (`az cognitiveservices usage list -l <region>`) |
 

@@ -64,6 +64,24 @@ resource "azurerm_search_service" "search" {
   sku                          = "free"
   local_authentication_enabled = true # keys + Entra (aadOrApiKey)
   authentication_failure_mode  = "http401WithBearerChallenge"
+
+  lifecycle {
+    # semantic reranker is enabled by terraform_data.search_semantic (CLI); don't let
+    # Terraform reset it to null.
+    ignore_changes = [semantic_search_sku]
+  }
+}
+
+# The azurerm provider rejects `semantic_search_sku` on the free tier, but the free tier
+# does support the semantic reranker (1000 queries/month) and the app needs it for rerank
+# scores. So enable it with the Azure CLI right after the service is created.
+# Uses the same `az login` session as the provider (AZURE_CONFIG_DIR is inherited).
+resource "terraform_data" "search_semantic" {
+  triggers_replace = [azurerm_search_service.search.id]
+
+  provisioner "local-exec" {
+    command = "az search service update -n ${azurerm_search_service.search.name} -g ${azurerm_resource_group.rg.name} --semantic-search free -o none"
+  }
 }
 
 # ---------- Container Registry + AKS ----------
@@ -87,6 +105,13 @@ resource "azurerm_kubernetes_cluster" "aks" {
     name       = "nodepool1"
     node_count = 1
     vm_size    = var.node_vm_size
+
+    # Azure adds these defaults itself; declaring them avoids a perpetual "1 to change" in plan.
+    upgrade_settings {
+      max_surge                     = "10%"
+      drain_timeout_in_minutes      = 0
+      node_soak_duration_in_minutes = 0
+    }
   }
 
   identity {
