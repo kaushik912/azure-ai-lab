@@ -24,15 +24,7 @@ Free-trial note: Azure OpenAI may be blocked on trial subs ("quota"/"access" err
 - **Re-enable it after the demo:** portal -> Microsoft Entra ID -> Properties -> Manage security defaults -> **Enabled** -> Save. (Or replace it with Conditional Access policies requiring MFA.)
 - In a real environment never leave it off: use MFA / Conditional Access, plus least-privilege RBAC.
 
-**Why registering MFA in Authenticator did not fix it (likely cause; not fully verified):**
-`outlook.com` is a *personal Microsoft account*, not a native user of the tenant. MFA set up on the personal account is evaluated by Microsoft-account sign-in, not by the tenant's Security defaults. That's also why `aka.ms/mfasetup` routed to the "Microsoft Services" tenant. Entra's sign-in analysis for the failure says: error 530035, blocked by a (Conditional Access-style) policy in the resource tenant; it's a policy block, not a code or command bug.
-
-**Options:**
-1. *Demo (what we did):* keep Security defaults **Disabled** during the lab, re-enable afterwards.
-2. *Proper fix:* create a native tenant user (portal -> Microsoft Entra ID -> Users -> New user, e.g. `labadmin@<tenant>.onmicrosoft.com`), give it **Owner** on the subscription (Subscriptions -> Access control (IAM)), register Authenticator for it at first sign-in, and use it for `az login`. Security defaults can then stay on.
-3. *Avoid local login:* use Cloud Shell (already authenticated; `terraform` is preinstalled).
-
-**WSL browser quirk:** `az login` may open a folder (e.g. OneDrive) instead of a browser. Use `az login --tenant <id> --use-device-code`, or `export BROWSER=wslview` (`sudo apt install wslu`), or copy the full URL into your browser by hand.
+Login still failing (MFA, wrong tenant, browser opens a folder)? See **Appendix: login and MFA troubleshooting** at the end.
 
 ## Step 3. Set variables + create resource group
 ```bash
@@ -226,3 +218,25 @@ Or open http://localhost:8080/docs.
 ```bash
 az group delete -n azure-ai-lab-rg --yes --no-wait
 ```
+
+---
+
+## Appendix: login and MFA troubleshooting
+
+### Why registering MFA in Authenticator did not fix `AADSTS530035` (likely cause; not fully verified)
+`outlook.com` is a *personal Microsoft account*, not a native user of the tenant. MFA set up on the personal account is evaluated by Microsoft-account sign-in, not by the tenant's Security defaults. That's also why `aka.ms/mfasetup` routed to the "Microsoft Services" tenant. Entra's sign-in analysis for the failure says: error 530035, blocked by a (Conditional Access-style) policy in the resource tenant. It's a policy block, not a code or command bug.
+
+### Options
+1. *Demo (what we did):* keep Security defaults **Disabled** during the lab, re-enable afterwards.
+2. *Proper fix:* create a native tenant user (portal -> Microsoft Entra ID -> Users -> New user, e.g. `labadmin@<tenant>.onmicrosoft.com`), give it **Owner** on the subscription (Subscriptions -> Access control (IAM)), register Authenticator for it at first sign-in, and use it for `az login`. Security defaults can then stay on.
+3. *Avoid local login:* use Cloud Shell (already authenticated; `terraform` is preinstalled).
+
+### Other login errors we hit
+| Error | Cause / fix |
+| --- | --- |
+| "Selected user account does not exist in tenant 'Microsoft Services'" | personal account defaulted to the wrong tenant; always `az login --tenant <tenant-id>` |
+| `AADSTS900144 ... 'client_id'` | sign-in URL was truncated when copied; use `--use-device-code` or let WSL open the browser |
+| "No subscriptions found" | free trial not started yet; sign up at azure.microsoft.com/free |
+| `[Errno 30] Read-only file system: ~/.azure/azureProfile.json` | `~/.azure` is a symlink to the Windows folder; `export AZURE_CONFIG_DIR=$HOME/.azure-wsl` |
+| `az login` opens a folder (e.g. OneDrive) instead of a browser | use `--use-device-code`, or `export BROWSER=wslview` (`sudo apt install wslu`), or paste the full URL into your browser |
+| "Please run 'az login'" after a while | session expired, or `az logout` was run in another shell sharing the same `AZURE_CONFIG_DIR` |
